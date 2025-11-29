@@ -8,15 +8,44 @@ use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::Stylize,
+    style::{Color, Style, Stylize},
     symbols::border,
     text::Line,
     widgets::{Block, Borders, Widget},
 };
 
+#[derive(Debug, Default, PartialEq)]
+enum FocusBlock {
+    Input,
+    Output,
+    Error,
+    #[default]
+    None,
+}
+
+impl FocusBlock {
+    pub fn next(&self) -> Self {
+        match self {
+            FocusBlock::Input => FocusBlock::Output,
+            FocusBlock::Output => FocusBlock::Error,
+            FocusBlock::Error => FocusBlock::None,
+            FocusBlock::None => FocusBlock::Input,
+        }
+    }
+    pub fn prev(&self) -> Self {
+        match self {
+            FocusBlock::Input => FocusBlock::None,
+            FocusBlock::Output => FocusBlock::Input,
+            FocusBlock::Error => FocusBlock::Output,
+            FocusBlock::None => FocusBlock::Error,
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct App {
     exit: bool,
+    focus: FocusBlock,
 }
 
 impl App {
@@ -43,13 +72,24 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
-        if let KeyCode::Char('q') = key_event.code {
-            self.exit();
+        match key_event.code {
+            KeyCode::Char('q') => self.exit(),
+            KeyCode::Tab => self.next_focus(),
+            KeyCode::BackTab => self.prev_focus(),
+            _ => {}
         }
     }
 
     fn exit(&mut self) {
         self.exit = true;
+    }
+
+    fn next_focus(&mut self) {
+        self.focus = self.focus.next();
+    }
+
+    fn prev_focus(&mut self) {
+        self.focus = self.focus.prev();
     }
 }
 
@@ -59,6 +99,22 @@ impl Widget for &App {
         let input_title = Line::from("input");
         let output_title = Line::from("output").alignment(Alignment::Right);
         let error_title = Line::from("error").alignment(Alignment::Center);
+
+        let input_color = if self.focus == FocusBlock::Input {
+            Color::Cyan
+        } else {
+            Color::Reset
+        };
+        let output_color = if self.focus == FocusBlock::Output {
+            Color::Cyan
+        } else {
+            Color::Reset
+        };
+        let error_color = if self.focus == FocusBlock::Error {
+            Color::Cyan
+        } else {
+            Color::Reset
+        };
 
         let outer_block = Block::bordered()
             .title(outer_title.centered())
@@ -74,7 +130,8 @@ impl Widget for &App {
 
         let error_block = Block::bordered()
             .title(error_title)
-            .border_set(border::ROUNDED);
+            .border_set(border::ROUNDED)
+            .border_style(Style::default().fg(error_color));
         let main_block = Block::default().borders(Borders::NONE);
         let main_inner_area = main_block.inner(chunks[0]);
 
@@ -88,10 +145,12 @@ impl Widget for &App {
 
         let input_block = Block::bordered()
             .title(input_title)
-            .border_set(border::ROUNDED);
+            .border_set(border::ROUNDED)
+            .border_style(Style::default().fg(input_color));
         let output_block = Block::bordered()
             .title(output_title)
-            .border_set(border::ROUNDED);
+            .border_set(border::ROUNDED)
+            .border_style(Style::default().fg(output_color));
 
         input_block.render(inner_chunks[0], buf);
         output_block.render(inner_chunks[1], buf);
