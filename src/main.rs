@@ -1,17 +1,17 @@
 extern crate crossterm;
 extern crate ratatui;
 
-use std::{error::Error, io};
+use std::io;
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
+    DefaultTerminal, Frame,
     buffer::Buffer,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::Stylize,
     symbols::border,
-    text::{Line, Text},
-    widgets::{Block, Paragraph, Widget},
-    DefaultTerminal, Frame,
+    text::Line,
+    widgets::{Block, Borders, Widget},
 };
 
 #[derive(Debug, Default)]
@@ -57,25 +57,34 @@ impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let outer_title = Line::from("Spliminal".bold());
         let input_title = Line::from("input");
-        let output_title = Line::from("output");
-        let error_title = Line::from("error");
+        let output_title = Line::from("output").alignment(Alignment::Right);
+        let error_title = Line::from("error").alignment(Alignment::Center);
 
         let outer_block = Block::bordered()
             .title(outer_title.centered())
             .border_set(border::THICK);
 
-        let inner_area = outer_block.inner(area);
+        let outer_inner_area = outer_block.inner(area);
         outer_block.render(area, buf);
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .margin(1)
-            .constraints([
-                Constraint::Ratio(1, 3),
-                Constraint::Ratio(1, 3),
-                Constraint::Ratio(1, 3),
-            ])
-            .split(inner_area);
+            .constraints([Constraint::Ratio(5, 6), Constraint::Ratio(1, 6)])
+            .split(outer_inner_area);
+
+        let error_block = Block::bordered()
+            .title(error_title)
+            .border_set(border::ROUNDED);
+        let main_block = Block::default().borders(Borders::NONE);
+        let main_inner_area = main_block.inner(chunks[0]);
+
+        main_block.render(chunks[0], buf);
+        error_block.render(chunks[1], buf);
+
+        let inner_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)])
+            .split(main_inner_area);
 
         let input_block = Block::bordered()
             .title(input_title)
@@ -83,13 +92,9 @@ impl Widget for &App {
         let output_block = Block::bordered()
             .title(output_title)
             .border_set(border::ROUNDED);
-        let error_block = Block::bordered()
-            .title(error_title)
-            .border_set(border::ROUNDED);
 
-        input_block.render(chunks[0], buf);
-        output_block.render(chunks[1], buf);
-        error_block.render(chunks[2], buf);
+        input_block.render(inner_chunks[0], buf);
+        output_block.render(inner_chunks[1], buf);
     }
 }
 
