@@ -49,8 +49,10 @@ impl FocusBlock {
 pub struct App {
     exit: bool,
     focus: FocusBlock,
-    input_text: String,
-    output_text: String,
+    input_text: Vec<String>,
+    output_text: Vec<String>,
+    error_text: Vec<String>,
+    curr_command: u16,
 }
 
 impl App {
@@ -84,19 +86,25 @@ impl App {
                 }
 
                 if self.focus == FocusBlock::Input {
-                    self.input_text.push(c);
+                    if self.input_text.is_empty() {
+                        self.input_text.push(String::new());
+                    }
+                    self.input_text.last_mut().unwrap().push(c);
                 }
             }
             KeyCode::Tab => self.next_focus(),
             KeyCode::BackTab => self.prev_focus(),
             KeyCode::Backspace => {
                 if self.focus == FocusBlock::Input {
-                    self.input_text.pop();
+                    if !self.input_text.is_empty() {
+                        self.input_text.last_mut().unwrap().pop();
+                    }
                 }
             }
             KeyCode::Enter => {
                 if self.focus == FocusBlock::Input {
                     self.run_command();
+                    self.input_text.push(String::new());
                 }
             }
             _ => {}
@@ -116,18 +124,26 @@ impl App {
     }
 
     fn run_command(&mut self) {
-        let command = self.input_text.trim();
+        let command = self.input_text.last().map(|s| s.trim()).unwrap_or("");
+
         if command.is_empty() {
             return;
         }
 
         let result = Command::new("sh").arg("-c").arg(command).output();
 
-        if let Ok(output) = result
-            && !output.stdout.is_empty()
-        {
-            let stdout_str = String::from_utf8_lossy(&output.stdout);
-            self.output_text.push_str(&stdout_str);
+        match result {
+            Ok(output) => {
+                if !output.stdout.is_empty() {
+                    let stdout_str = String::from_utf8_lossy(&output.stdout).to_string();
+                    self.output_text.push(stdout_str);
+                }
+                if !output.stderr.is_empty() {
+                    let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
+                    self.error_text.push(stderr_str);
+                }
+            }
+            _ => {} // TODO: create an alert here, that you command failed to run
         }
     }
 }
@@ -158,7 +174,6 @@ impl Widget for &App {
         let outer_block = Block::bordered()
             .title(outer_title.centered())
             .border_set(border::THICK);
-
         let outer_inner_area = outer_block.inner(area);
         outer_block.render(area, buf);
 
@@ -167,15 +182,24 @@ impl Widget for &App {
             .constraints([Constraint::Ratio(5, 6), Constraint::Ratio(1, 6)])
             .split(outer_inner_area);
 
+        let main_block = Block::default().borders(Borders::NONE);
+        let main_inner_area = main_block.inner(chunks[0]);
+        main_block.render(chunks[0], buf);
+
         let error_block = Block::bordered()
             .title(error_title)
             .border_set(border::ROUNDED)
             .border_style(Style::default().fg(error_color));
-        let main_block = Block::default().borders(Borders::NONE);
-        let main_inner_area = main_block.inner(chunks[0]);
-
-        main_block.render(chunks[0], buf);
+        let error_area = error_block.inner(chunks[1]);
         error_block.render(chunks[1], buf);
+        let error_lines: Vec<Line> = self
+            .error_text
+            .iter()
+            .enumerate()
+            .map(|(i, s)| Line::from(format!("[{}]: {}", i + 1, s)))
+            .collect();
+        let error_paragraph = Paragraph::new(error_lines);
+        error_paragraph.render(error_area, buf);
 
         let inner_chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -187,19 +211,30 @@ impl Widget for &App {
             .border_set(border::ROUNDED)
             .border_style(Style::default().fg(input_color));
         let input_area = input_block.inner(inner_chunks[0]);
+        input_block.render(inner_chunks[0], buf);
+        let input_lines: Vec<Line> = self
+            .input_text
+            .iter()
+            .enumerate()
+            .map(|(i, s)| Line::from(format!("[{}]: {}", i, s)))
+            .collect();
+        let input_paragraph = Paragraph::new(input_lines);
+        input_paragraph.render(input_area, buf);
 
         let output_block = Block::bordered()
             .title(output_title)
             .border_set(border::ROUNDED)
             .border_style(Style::default().fg(output_color));
         let output_area = output_block.inner(inner_chunks[1]);
-
-        input_block.render(inner_chunks[0], buf);
         output_block.render(inner_chunks[1], buf);
+        let output_lines: Vec<Line> = self
+            .output_text
+            .iter()
+            .enumerate()
+            .map(|(i, s)| Line::from(format!("[{}]: {}", i, s)))
+            .collect();
+        let output_paragraph = Paragraph::new(output_lines);
 
-        let input_paragraph = Paragraph::new(self.input_text.clone());
-        let output_paragraph = Paragraph::new(self.output_text.clone());
-        input_paragraph.render(input_area, buf);
         output_paragraph.render(output_area, buf);
     }
 }
