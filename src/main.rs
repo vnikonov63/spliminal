@@ -1,7 +1,10 @@
 extern crate crossterm;
 extern crate ratatui;
 
-use std::io;
+use std::{
+    io,
+    process::{Command, Output},
+};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
@@ -47,6 +50,7 @@ pub struct App {
     exit: bool,
     focus: FocusBlock,
     input_text: String,
+    output_text: String,
 }
 
 impl App {
@@ -90,6 +94,11 @@ impl App {
                     self.input_text.pop();
                 }
             }
+            KeyCode::Enter => {
+                if self.focus == FocusBlock::Input {
+                    self.run_command();
+                }
+            }
             _ => {}
         }
     }
@@ -104,6 +113,22 @@ impl App {
 
     fn prev_focus(&mut self) {
         self.focus = self.focus.prev();
+    }
+
+    fn run_command(&mut self) {
+        let command = self.input_text.trim();
+        if command.is_empty() {
+            return;
+        }
+
+        let result = Command::new("sh").arg("-c").arg(command).output();
+
+        if let Ok(output) = result
+            && !output.stdout.is_empty()
+        {
+            let stdout_str = String::from_utf8_lossy(&output.stdout);
+            self.output_text.push_str(&stdout_str);
+        }
     }
 }
 
@@ -167,12 +192,15 @@ impl Widget for &App {
             .title(output_title)
             .border_set(border::ROUNDED)
             .border_style(Style::default().fg(output_color));
+        let output_area = output_block.inner(inner_chunks[1]);
 
         input_block.render(inner_chunks[0], buf);
         output_block.render(inner_chunks[1], buf);
 
         let input_paragraph = Paragraph::new(self.input_text.clone());
+        let output_paragraph = Paragraph::new(self.output_text.clone());
         input_paragraph.render(input_area, buf);
+        output_paragraph.render(output_area, buf);
     }
 }
 
