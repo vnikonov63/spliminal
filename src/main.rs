@@ -11,7 +11,7 @@ use ratatui::{
     style::{Color, Style, Stylize},
     symbols::border,
     text::Line,
-    widgets::{Block, Borders, Widget},
+    widgets::{Block, Borders, Paragraph, Widget},
 };
 
 #[derive(Debug, Default, PartialEq)]
@@ -46,6 +46,7 @@ impl FocusBlock {
 pub struct App {
     exit: bool,
     focus: FocusBlock,
+    input_text: String,
 }
 
 impl App {
@@ -73,9 +74,22 @@ impl App {
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
-            KeyCode::Char('q') => self.exit(),
+            KeyCode::Char(c) => {
+                if self.focus == FocusBlock::None && c == 'q' {
+                    self.exit();
+                }
+
+                if self.focus == FocusBlock::Input {
+                    self.input_text.push(c);
+                }
+            }
             KeyCode::Tab => self.next_focus(),
             KeyCode::BackTab => self.prev_focus(),
+            KeyCode::Backspace => {
+                if self.focus == FocusBlock::Input {
+                    self.input_text.pop();
+                }
+            }
             _ => {}
         }
     }
@@ -147,6 +161,8 @@ impl Widget for &App {
             .title(input_title)
             .border_set(border::ROUNDED)
             .border_style(Style::default().fg(input_color));
+        let input_area = input_block.inner(inner_chunks[0]);
+
         let output_block = Block::bordered()
             .title(output_title)
             .border_set(border::ROUNDED)
@@ -154,6 +170,9 @@ impl Widget for &App {
 
         input_block.render(inner_chunks[0], buf);
         output_block.render(inner_chunks[1], buf);
+
+        let input_paragraph = Paragraph::new(self.input_text.clone());
+        input_paragraph.render(input_area, buf);
     }
 }
 
